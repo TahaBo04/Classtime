@@ -1,160 +1,372 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>S13 Live Schedule</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>EMI GPI Live Schedule (S13→S24)</title>
+  <style>
+    :root { --bg1:#071a2a; --bg2:#0b2b44; --card:rgba(255,255,255,.08); --muted:rgba(255,255,255,.75); --accent:#00ffcc; }
+    body{
+      margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+      background: linear-gradient(135deg,var(--bg1),var(--bg2));
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:#fff; padding:24px;
+    }
+    .wrap{ width:min(900px,100%); }
+    .card{
+      background:var(--card); border:1px solid rgba(255,255,255,.12);
+      border-radius:16px; padding:22px; backdrop-filter: blur(8px);
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+    .top{
+      display:flex; gap:14px; flex-wrap:wrap; align-items:center; justify-content:space-between;
+      margin-bottom:14px;
+    }
+    h1{ font-size:18px; margin:0; letter-spacing:.3px; }
+    .controls{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    select{
+      padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.18);
+      background: rgba(0,0,0,.25); color:#fff; outline:none; font-size:14px;
+    }
+    .time{
+      font-size:14px; color:var(--muted);
+    }
+    .grid{
+      display:grid; grid-template-columns: 1.2fr .8fr; gap:14px;
+      margin-top:14px;
+    }
+    @media (max-width: 820px){ .grid{ grid-template-columns:1fr; } }
 
-<style>
-body {
-    font-family: Arial, sans-serif;
-    background: linear-gradient(135deg,#001f3f,#003366);
-    color: white;
-    text-align: center;
-    padding: 50px;
-}
-
-.card {
-    background: rgba(255,255,255,0.1);
-    padding: 30px;
-    border-radius: 15px;
-    width: 400px;
-    margin: auto;
-}
-
-h1 {
-    margin-bottom: 10px;
-}
-
-.time {
-    font-size: 22px;
-    margin-bottom: 20px;
-}
-
-.course {
-    font-size: 26px;
-    font-weight: bold;
-    color: #00ffcc;
-}
-
-.small {
-    margin-top: 10px;
-    font-size: 14px;
-    opacity: 0.7;
-}
-</style>
+    .panel{ padding:16px; border-radius:14px; border:1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.18); }
+    .panel h2{ margin:0 0 10px 0; font-size:14px; color:var(--muted); font-weight:600; }
+    .nowTitle{
+      font-size:22px; font-weight:800; color:var(--accent);
+      margin:0 0 8px 0;
+    }
+    .sub{ color:var(--muted); font-size:13px; }
+    .badge{
+      display:inline-block; padding:6px 10px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.06);
+      font-size:12px; color:var(--muted);
+      margin-left:8px;
+    }
+    .list{ display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+    .item{
+      display:flex; justify-content:space-between; gap:10px; align-items:flex-start;
+      padding:10px 12px; border-radius:12px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.05);
+    }
+    .item .name{ font-weight:650; }
+    .item .meta{ font-size:12px; color:var(--muted); margin-top:2px; }
+    .item .t{ font-size:12px; color:var(--muted); white-space:nowrap; }
+    .empty{ color:rgba(255,255,255,.6); font-size:13px; }
+    .footerNote{ margin-top:10px; color:rgba(255,255,255,.55); font-size:12px; }
+  </style>
 </head>
 <body>
+<div class="wrap">
+  <div class="card">
+    <div class="top">
+      <div>
+        <h1>EMI — GPI Live Schedule (S13 → S24)</h1>
+        <div class="time" id="clock"></div>
+      </div>
+      <div class="controls">
+        <select id="semester">
+          <option>S13</option><option>S14</option><option>S15</option><option>S16</option>
+          <option>S17</option><option>S18</option><option>S19</option><option>S20</option>
+          <option>S21</option><option>S22</option><option>S23</option><option>S24</option>
+        </select>
+      </div>
+    </div>
 
-<div class="card">
-    <h1>S13 Live Course</h1>
-    <div class="time" id="currentTime"></div>
-    <div class="course" id="courseDisplay"></div>
-    <div class="small" id="ramadanStatus"></div>
+    <div class="grid">
+      <div class="panel">
+        <h2>NOW</h2>
+        <div class="nowTitle" id="nowCourse">—</div>
+        <div class="sub" id="nowInfo">—</div>
+      </div>
+
+      <div class="panel">
+        <h2>NEXT (today)</h2>
+        <div class="list" id="nextList"></div>
+      </div>
+
+      <div class="panel" style="grid-column:1 / -1;">
+        <h2>COMPLETED (today)</h2>
+        <div class="list" id="doneList"></div>
+        <div class="footerNote" id="ramadanNote"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
+/* =========================
+   Dates / Timezone
+========================= */
+const TZ = "Africa/Casablanca";
+const semesterStart = new Date("2025-02-16T00:00:00Z"); // you said week of Feb 16 starts
+const ramadanStart  = new Date("2025-02-19T00:00:00Z");
+const ramadanEnd    = new Date("2025-03-20T23:59:59Z"); // 30 days window
 
-// ===== CONFIG =====
-const ramadanStart = new Date("2025-02-19");
-const ramadanEnd = new Date("2025-03-20");
-const semesterStart = new Date("2025-02-16");
-
-// ===== S13 SCHEDULE =====
-const schedule = {
-    1: { // Monday
-        "08:00-10:00": "Organisation et Gestion",
-        "10:00-12:00": "Instrumentation et Dynamique"
-    },
-    2: { // Tuesday
-        "10:00-12:00": "Procédés Chimie Minérale 1"
-    },
-    3: { // Wednesday
-        "10:00-12:00": "Régulation & Commande"
-    },
-    4: { // Thursday
-        "08:00-10:00": "Procédés Chimie Organique",
-        "10:00-12:00": "Chimie de l'Ingénieur"
-    },
-    5: { // Friday
-        "08:00-10:00": "Innovation & Communication"
-    }
-};
-
-// ===== RAMADAN SCHEDULE SHIFT =====
-function adjustForRamadan(start, end) {
-    const [h1,m1] = start.split(":").map(Number);
-    const [h2,m2] = end.split(":").map(Number);
-
-    return [
-        `${h1+1}:${m1.toString().padStart(2,"0")}`,
-        `${h2}:${m2.toString().padStart(2,"0")}`
-    ];
+function nowMA(){
+  return new Date(new Date().toLocaleString("en-US", { timeZone: TZ }));
+}
+function yyyyMmDd(d){
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,"0");
+  const day=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+function mins(hhmm){ const [h,m]=hhmm.split(":").map(Number); return h*60+m; }
+function fmtHM(m){
+  const h=Math.floor(m/60), mm=m%60;
+  return `${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
 }
 
-function getCurrentMoroccoTime() {
-    return new Date(
-        new Date().toLocaleString("en-US", {timeZone: "Africa/Casablanca"})
-    );
+/* =========================
+   Ramadan time mapping (important)
+   Your PDF says:
+   - Morning: 09:00–12:00
+   - Afternoon: 13:00–16:00
+   - Friday PM: 13:30–16:30
+   - Reduce 15 minutes per hour => 2h block becomes ~1h30
+
+   We map the normal blocks to Ramadan blocks:
+   Normal 08-10 -> 09:00–10:30
+   Normal 10-12 -> 10:30–12:00
+   Normal 14-16 -> 13:00–14:30  (Friday: 13:30–15:00)
+   Normal 16-18 -> 14:30–16:00  (Friday: 15:00–16:30)
+========================= */
+function mapRamadan(dayNum, start, end){
+  const key = `${start}-${end}`;
+  const isFriday = (dayNum === 5);
+
+  const map = {
+    "08:00-10:00": ["09:00","10:30"],
+    "10:00-12:00": ["10:30","12:00"],
+    "14:00-16:00": isFriday ? ["13:30","15:00"] : ["13:00","14:30"],
+    "16:00-18:00": isFriday ? ["15:00","16:30"] : ["14:30","16:00"],
+  };
+  return map[key] || [start,end];
 }
 
-function checkCourse() {
+/* =========================
+   Build schedule programmatically for S13→S24
+========================= */
+function rangeSemesters(from, to){
+  const out=[];
+  for(let i=from;i<=to;i++) out.push(`S${i}`);
+  return out;
+}
+function makeEmptySchedule(){
+  const sch={};
+  for(let i=13;i<=24;i++) sch[`S${i}`]={ 1:[],2:[],3:[],4:[],5:[] };
+  return sch;
+}
+const schedule = makeEmptySchedule();
 
-    const now = getCurrentMoroccoTime();
-    document.getElementById("currentTime").innerText =
-        now.toLocaleString("en-GB");
-
-    if (now < semesterStart) {
-        document.getElementById("courseDisplay").innerText =
-            "Semester not started";
-        return;
-    }
-
-    const isRamadan = now >= ramadanStart && now <= ramadanEnd;
-
-    document.getElementById("ramadanStatus").innerText =
-        isRamadan ? "Ramadan Schedule Active" : "Normal Schedule";
-
-    const day = now.getDay();
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
-
-    if (!schedule[day]) {
-        document.getElementById("courseDisplay").innerText =
-            "No course today";
-        return;
-    }
-
-    const currentTime = hours*60 + minutes;
-
-    for (let slot in schedule[day]) {
-
-        let [start,end] = slot.split("-");
-
-        if (isRamadan) {
-            [start,end] = adjustForRamadan(start,end);
-        }
-
-        const [sh,sm] = start.split(":").map(Number);
-        const [eh,em] = end.split(":").map(Number);
-
-        const startMin = sh*60+sm;
-        const endMin = eh*60+em;
-
-        if (currentTime >= startMin && currentTime <= endMin) {
-            document.getElementById("courseDisplay").innerText =
-                schedule[day][slot];
-            return;
-        }
-    }
-
-    document.getElementById("courseDisplay").innerText =
-        "No class right now";
+function addToRange(semFrom, semTo, dayNum, start, end, name, meta){
+  for(const sem of rangeSemesters(semFrom, semTo)){
+    schedule[sem][dayNum].push({ start, end, name, meta });
+  }
 }
 
-checkCourse();
-setInterval(checkCourse, 60000);
+/* ===== THEORY (LEFT TABLE) =====
+Monday:
+- 08-10 Organisation & Gestion (S17-S24)
+- 10-12 Instrumentation & Dynamique (S13-S22)
+Tuesday:
+- 08-10 Séchage (S19-S24)
+- 10-12 Proc. Chimie Minérale 1 (S13-S18)
+- 10-12 Proc. Chimie Minérale 2 (S19-S24)
+Wednesday:
+- 10-12 Régulation & Commande (S13-S22)
+- 10-12 Chimie pour l’Ingénieur (S23-S24)
+Thursday:
+- 08-10 Procédés Ind. Chimie Organique (S13-S16)
+- 10-12 Chimie de l’Ingénieur (S13-S24)
+Friday:
+- Innovation & Communication spans both 08-10 and 10-12 (S13-S24)
+*/
+addToRange(17,24,1,"08:00","10:00","Organisation et Gestion des Entreprises","Cours (Amphi)");
+addToRange(13,22,1,"10:00","12:00","Instrumentation et Dynamique des Procédés","Cours (Amphi) — Mr GHAZI");
 
+addToRange(19,24,2,"08:00","10:00","Séchage","Cours (Amphi) — Mme EL ALAMI");
+addToRange(13,18,2,"10:00","12:00","Procédés Industriels de la Chimie Minérale 1","Cours (Amphi) — Mr GHAZI");
+addToRange(19,24,2,"10:00","12:00","Procédés Industriels de la Chimie Minérale 2","Cours (Amphi) — Mr ZALIM");
+
+addToRange(13,22,3,"10:00","12:00","Régulation et Commande des Procédés","Cours (Amphi) — Mr GHAZI");
+addToRange(23,24,3,"10:00","12:00","Chimie pour l’Ingénieur","Cours (Amphi) — Mme EL ALAMI");
+
+addToRange(13,16,4,"08:00","10:00","Procédés Industriels de la Chimie Organique","Cours (Amphi) — Mme EL AHMADI");
+addToRange(13,24,4,"10:00","12:00","Chimie de l’Ingénieur","Cours (Amphi) — Mme EL ALAMI");
+
+addToRange(13,24,5,"08:00","10:00","Innovation et Communication","Cours (Amphi) — Profs GPI");
+addToRange(13,24,5,"10:00","12:00","Innovation et Communication","Cours (Amphi) — Profs GPI");
+
+/* ===== PRACTICALS (RIGHT TABLE) =====
+Tuesday:
+- 14-16 EPM (all)
+- 16-18: Proc. Chimie Organique (S13-S16)  / Echangeurs de Chaleur (S17-S24)
+
+Wednesday:
+- 14-18: TP Génie Chimique 4 & Dynamique et commande (S20-S24)
+
+Thursday:
+- 14-16: Proc. Chimie Organique (S13-S16)
+- 14-16: Séchage (S17-S19)
+- 16-18: Séchage (S18-S19)
+- 14-18: TP Chimie de l’Ingénieur (S20-S24)
+
+Friday:
+- 14-16: Analyse de Projet (S14-S21)
+- 16-18: Gestion de Projet (S15-S21)
+- 16-18: Gestion de Projet (S22-S24)
+*/
+addToRange(13,24,2,"14:00","16:00","EPM","Activités pratiques (Filière)");
+addToRange(13,16,2,"16:00","18:00","Procédés Industriels de la Chimie Organique","TP/Pratique — Mme EL AHMADI");
+addToRange(17,24,2,"16:00","18:00","Échangeurs de Chaleur","TP/Pratique — Mr EL ANDALOUSSI");
+
+addToRange(20,24,3,"14:00","16:00","TP Génie Chimique 4 & Dynamique et Commande","TP — Mme EL ALAMI / Mr EL ANDALOUSSI / Mr GHAZI");
+addToRange(20,24,3,"16:00","18:00","TP Génie Chimique 4 & Dynamique et Commande","TP — Mme EL ALAMI / Mr EL ANDALOUSSI / Mr GHAZI");
+
+addToRange(13,16,4,"14:00","16:00","Procédés Industriels de la Chimie Organique","TP/Pratique — Mme EL AHMADI");
+addToRange(17,19,4,"14:00","16:00","Séchage","TP/Pratique — Mme EL ALAMI");
+addToRange(18,19,4,"16:00","18:00","Séchage","TP/Pratique — Mme EL ALAMI");
+
+addToRange(20,24,4,"14:00","16:00","TP Chimie de l’Ingénieur","TP — (équipe encadrante)");
+addToRange(20,24,4,"16:00","18:00","TP Chimie de l’Ingénieur","TP — (équipe encadrante)");
+
+addToRange(14,21,5,"14:00","16:00","Analyse de Projet","Projet");
+addToRange(15,21,5,"16:00","18:00","Gestion de Projet","Projet — Mr ARROUB");
+addToRange(22,24,5,"16:00","18:00","Gestion de Projet","Projet — Mr ARROUB");
+
+/* =========================
+   Daily logic: NOW / NEXT / DONE
+========================= */
+function todaysEvents(sem, dayNum, isRamadan){
+  const list = (schedule[sem]?.[dayNum] || []).map(ev=>{
+    let s=ev.start, e=ev.end;
+    if(isRamadan){
+      const mapped = mapRamadan(dayNum, ev.start, ev.end);
+      s=mapped[0]; e=mapped[1];
+    }
+    return {
+      ...ev,
+      startAdj:s, endAdj:e,
+      startMin: mins(s), endMin: mins(e),
+      timeLabel: `${s}–${e}`
+    };
+  });
+
+  // sort by time
+  list.sort((a,b)=>a.startMin-b.startMin);
+  return list;
+}
+
+function render(){
+  const now = nowMA();
+  const sem = document.getElementById("semester").value;
+
+  // save selection
+  localStorage.setItem("emi_semester", sem);
+
+  const isRamadan = (now >= ramadanStart && now <= ramadanEnd);
+  const dayNum = now.getDay(); // 0 Sun ... 5 Fri
+  const minsNow = now.getHours()*60 + now.getMinutes();
+
+  // clock
+  const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  document.getElementById("clock").textContent =
+    `${days[dayNum]} • ${now.toLocaleString("en-GB",{ hour12:false })} (Morocco)`;
+
+  const noteEl = document.getElementById("ramadanNote");
+  noteEl.textContent = isRamadan
+    ? "Ramadan mode: blocks remapped to 09:00–12:00 and 13:00–16:00 (Friday PM 13:30–16:30)."
+    : "Normal mode: blocks are 08–10, 10–12, 14–16, 16–18.";
+
+  // semester not started
+  if(now < new Date(new Date(semesterStart).toLocaleString("en-US",{timeZone:TZ}))){
+    document.getElementById("nowCourse").textContent = "Semester not started";
+    document.getElementById("nowInfo").textContent = "Starts week of 16 Feb 2025";
+    document.getElementById("nextList").innerHTML = `<div class="empty">—</div>`;
+    document.getElementById("doneList").innerHTML = `<div class="empty">—</div>`;
+    return;
+  }
+
+  // no classes on weekend
+  if(dayNum === 0 || dayNum === 6){
+    document.getElementById("nowCourse").textContent = "No classes today";
+    document.getElementById("nowInfo").textContent = "Weekend";
+    document.getElementById("nextList").innerHTML = `<div class="empty">—</div>`;
+    document.getElementById("doneList").innerHTML = `<div class="empty">—</div>`;
+    return;
+  }
+
+  const events = todaysEvents(sem, dayNum, isRamadan);
+
+  // split: done / current / next
+  const done = events.filter(ev => ev.endMin < minsNow);
+  const current = events.find(ev => ev.startMin <= minsNow && minsNow <= ev.endMin);
+  const next = events.filter(ev => ev.startMin > minsNow);
+
+  // NOW
+  if(current){
+    document.getElementById("nowCourse").textContent = current.name;
+    document.getElementById("nowInfo").innerHTML =
+      `${current.timeLabel} <span class="badge">${sem}</span><div class="sub">${current.meta || ""}</div>`;
+  } else {
+    document.getElementById("nowCourse").textContent = "No class right now";
+    const nextOne = next[0];
+    document.getElementById("nowInfo").innerHTML =
+      nextOne ? `Next starts at <b>${nextOne.startAdj}</b> <span class="badge">${sem}</span>` : `No more classes today <span class="badge">${sem}</span>`;
+  }
+
+  // NEXT (today) — show up to 3
+  const nextBox = document.getElementById("nextList");
+  if(next.length === 0){
+    nextBox.innerHTML = `<div class="empty">No upcoming classes today.</div>`;
+  } else {
+    nextBox.innerHTML = next.slice(0,3).map(ev=>`
+      <div class="item">
+        <div>
+          <div class="name">${ev.name}</div>
+          <div class="meta">${ev.meta || ""}</div>
+        </div>
+        <div class="t">${ev.timeLabel}</div>
+      </div>
+    `).join("");
+  }
+
+  // DONE (today)
+  const doneBox = document.getElementById("doneList");
+  if(done.length === 0){
+    doneBox.innerHTML = `<div class="empty">Nothing completed yet today.</div>`;
+  } else {
+    doneBox.innerHTML = done.map(ev=>`
+      <div class="item">
+        <div>
+          <div class="name">${ev.name}</div>
+          <div class="meta">${ev.meta || ""}</div>
+        </div>
+        <div class="t">${ev.timeLabel}</div>
+      </div>
+    `).join("");
+  }
+}
+
+// init semester from storage
+(function init(){
+  const saved = localStorage.getItem("emi_semester");
+  if(saved) document.getElementById("semester").value = saved;
+  document.getElementById("semester").addEventListener("change", render);
+  render();
+  setInterval(render, 15_000); // refresh every 15s
+})();
 </script>
-
 </body>
 </html>
